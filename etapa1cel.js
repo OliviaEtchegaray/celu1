@@ -2,10 +2,7 @@ let video;
 let poseNet;
 let poses = [];
 let smoothPoses = [];
-let glitchTimer = 0;
 let useFrontCamera = true;
-let showPrivacyText = false;
-let floatingWords = [];
 
 const privacyText = [
   "¿Dónde termina lo privado",
@@ -15,6 +12,8 @@ const privacyText = [
   "en predicciones,",
   "en capital para una máquina que no olvida?"
 ];
+
+let headOverlays = []; // para almacenar la estrella + palabra por cabeza
 
 function setup() {
   createCanvas(windowWidth, windowHeight);
@@ -54,20 +53,22 @@ function initVideo() {
 function toggleCamera() {
   useFrontCamera = !useFrontCamera;
   initVideo();
-  showPrivacyText = !useFrontCamera;
 }
 
 function draw() {
   background(0, 50);
 
+  // espejo solo en frontal
   push();
   translate(width, 0);
-  scale(-1, 1);
+  scale(useFrontCamera ? -1 : 1, 1);
   tint(255, 50);
   image(video, 0, 0, width, height);
 
   const partesImportantes = ['nose','leftShoulder','rightShoulder',
                             'leftWrist','rightWrist','leftHip','rightHip','leftAnkle','rightAnkle'];
+
+  headOverlays = []; // resetear overlays cada frame
 
   for (let i = 0; i < poses.length; i++) {
     let pose = poses[i].pose;
@@ -88,7 +89,7 @@ function draw() {
         noStroke();
         ellipse(smoothPoses[i][j].x, smoothPoses[i][j].y, 12,12);
 
-        // Cámara trasera: estrella sobre cabeza + palabras
+        // Si es cámara trasera y la parte es cabeza (nose)
         if(!useFrontCamera && kp.part === 'nose'){
           let leftShoulder = pose.keypoints.find(k => k.part==='leftShoulder');
           let rightShoulder = pose.keypoints.find(k => k.part==='rightShoulder');
@@ -96,20 +97,26 @@ function draw() {
             leftShoulder.position.x, leftShoulder.position.y,
             rightShoulder.position.x, rightShoulder.position.y
           );
-          let offsetY = shoulderDist * 0.8;
+          let offsetY = shoulderDist * 0.9;
 
-          drawStar(smoothPoses[i][j].x, smoothPoses[i][j].y - offsetY, 10, 25, 5);
-          spawnWords(smoothPoses[i][j].x, smoothPoses[i][j].y - offsetY);
+          // Guardar overlay para dibujar estrella + palabra
+          headOverlays.push({
+            x: smoothPoses[i][j].x,
+            y: smoothPoses[i][j].y - offsetY,
+            word: random(privacyText.join(" ").split(" "))
+          });
         }
 
+        // Texto tracking siempre legible
         push();
-        scale(-1, 1);
+        scale(useFrontCamera ? -1 : 1, 1);
         text(`${traducirParte(kp.part)} (${Math.floor(smoothPoses[i][j].x)}, ${Math.floor(smoothPoses[i][j].y)})`,
              -smoothPoses[i][j].x - 5, smoothPoses[i][j].y - 5);
         pop();
       }
     }
 
+    // dibujar líneas del cuerpo
     stroke(255,0,0);
     strokeWeight(2);
     const linePairs = [
@@ -127,19 +134,15 @@ function draw() {
     }
   }
 
-  // glitch dinámico
-  if(millis() - glitchTimer > 1500){
-    textSize(48);
+  // dibujar overlay de cabeza solo una estrella grande + palabra
+  for(let o of headOverlays){
+    drawStar(o.x, o.y, 20, 60, 5);
+    fill(255,0,0);
     textAlign(CENTER, CENTER);
-    for(let k=0;k<5;k++){
-      fill(255,0,0);
-      push();
-      scale(-1,1);
-      text("TE ESTAMOS VIENDO",-random(width),random(height));
-      pop();
-    }
-    glitchTimer = millis();
+    textSize(20);
+    text(o.word, o.x, o.y);
   }
+
   pop();
 
   // etiqueta inferior derecha
@@ -148,30 +151,13 @@ function draw() {
   textAlign(RIGHT, BOTTOM);
   text("@estreiia_", width-10, height-10);
 
-  // actualizar y dibujar palabras flotantes
-  for(let i=floatingWords.length-1; i>=0; i--){
-    let w = floatingWords[i];
-    w.y -= 1;
-    fill(255,0,0,200);
-    textSize(16);
-    textAlign(CENTER, CENTER);
-    text(w.text, w.x, w.y);
-    if(w.y < 0) floatingWords.splice(i,1);
-  }
-
-  // texto conceptual arriba
-  if(showPrivacyText){
+  // texto conceptual arriba en trasera
+  if(!useFrontCamera){
     fill(255,0,0);
     textSize(18);
     textAlign(CENTER, CENTER);
     text(privacyText.join("\n"), width/2, 50, width-40);
   }
-}
-
-function spawnWords(x, y){
-  let lines = privacyText.join(" ").split(" ");
-  let word = random(lines);
-  floatingWords.push({text: word, x: x+random(-20,20), y: y});
 }
 
 function drawStar(x, y, radius1, radius2, npoints){
